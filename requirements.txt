@@ -1,0 +1,6 @@
+whisper
+pydub
+torch
+pyannote.audio
+huggingface-hub
+ffmpeg-python
