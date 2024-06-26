@@ -11,6 +11,7 @@ import json
 import time
 from huggingface_hub import login
 from huggingface_hub.utils import HfHubHTTPError
+import numpy as np
 
 CHUNK_LENGTH_MS = 5 * 60 * 1000  # 5 minutes
 
@@ -30,15 +31,15 @@ def convert_to_wav(input_file: str) -> str:
     
     return wav_file
 
-def transcribe_audio_chunk(audio_chunk: AudioSegment, model: whisper.Whisper) -> dict:
+def transcribe_audio_chunk(audio_chunk: AudioSegment, model, device) -> dict:
     with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_file:
         audio_chunk.export(temp_file.name, format="wav")
-        result = model.transcribe(temp_file.name)
+        result = model.transcribe(temp_file.name, fp16=device.type == "cuda")
     os.unlink(temp_file.name)
     return result
 
-def transcribe_audio(audio_file: str, progress_file: str) -> list:
-    model = whisper.load_model("tiny")  # Use the smallest model
+def transcribe_audio(audio_file: str, progress_file: str, device, model_name: str) -> list:
+    model = whisper.load_model(model_name, device=device)  # Use the specified model
     audio = AudioSegment.from_wav(audio_file)
     chunks = [audio[i:i+CHUNK_LENGTH_MS] for i in range(0, len(audio), CHUNK_LENGTH_MS)]
     
@@ -52,8 +53,8 @@ def transcribe_audio(audio_file: str, progress_file: str) -> list:
             start_chunk = progress['last_chunk'] + 1
     
     for i, chunk in enumerate(chunks[start_chunk:], start=start_chunk):
-        print(f"Transcribing chunk {i+1}/{len(chunks)}...")
-        result = transcribe_audio_chunk(chunk, model)
+        print(f"Transcribing chunk {i+1}/{len(chunks)}...")  # 進捗状況を出力
+        result = transcribe_audio_chunk(chunk, model, device)
         transcriptions.append(result)
         
         # Save progress
@@ -67,7 +68,9 @@ def transcribe_audio(audio_file: str, progress_file: str) -> list:
 
 def perform_diarization(audio_file: str, auth_token: str) -> dict:
     try:
-        # 認証トークンを使用してモデルをダウンロード
+        # NumPyのNANをnp.nanに置き換え
+        np.NAN = np.nan
+        
         pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization@2.1",
                                             use_auth_token=auth_token)
         diarization = pipeline(audio_file)
@@ -105,7 +108,7 @@ def merge_transcription_and_diarization(transcriptions: list, diarization: dict)
     
     return "\n".join(merged_output)
 
-def main(input_file: str, output_file: str, auth_token: str):
+def main(input_file: str, output_file: str, auth_token: str, model_name: str):
     # Login to Hugging Face
     print(f"Using auth token: {auth_token}")  # トークンの確認
     login(token=auth_token)
@@ -127,8 +130,11 @@ def main(input_file: str, output_file: str, auth_token: str):
         print(f"Error during conversion: {str(e)}")
         sys.exit(1)
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
     print("Transcribing audio...")
-    transcriptions = transcribe_audio(wav_file, progress_file)
+    transcriptions = transcribe_audio(wav_file, progress_file, device, model_name)
 
     if not os.path.exists(diarization_file):
         print("Performing speaker diarization...")
@@ -164,6 +170,7 @@ if __name__ == "__main__":
     parser.add_argument("input_file", help="Path to the input audio file (MP3, M4A, or MP4)")
     parser.add_argument("output_file", help="Path to the output text file")
     parser.add_argument("--auth_token", required=True, help="Hugging Face authentication token")
+    parser.add_argument("--model_name", default="tiny", help="Name of the Whisper model to use (e.g. tiny, base, large)")
     args = parser.parse_args()
 
-    main(args.input_file, args.output_file, args.auth_token)
+    main(args.input_file, args.output_file, args.auth_token, args.model_name)
