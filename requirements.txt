@@ -4,3 +4,4 @@ torch
 pyannote.audio
 huggingface-hub
 ffmpeg-python
+openai-whisper
