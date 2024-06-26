@@ -62,7 +62,7 @@ def transcribe_audio(audio_file: str, progress_file: str, device, model_name: st
             json.dump({'transcriptions': transcriptions, 'last_chunk': i}, f)
         
         # Add a sleep to reduce CPU usage
-        time.sleep(0.5)  # Adjust this value to control CPU usage
+        # time.sleep(0.5)  # Adjust this value to control CPU usage
     
     return transcriptions
 
