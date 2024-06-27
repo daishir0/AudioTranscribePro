@@ -6,3 +6,4 @@ huggingface-hub
 ffmpeg-python
 openai-whisper
 faster-whisper
+numpy<2
