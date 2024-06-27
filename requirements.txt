@@ -5,3 +5,4 @@ pyannote.audio
 huggingface-hub
 ffmpeg-python
 openai-whisper
+faster-whisper
