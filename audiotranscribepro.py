@@ -13,6 +13,7 @@ from huggingface_hub import login
 from huggingface_hub.utils import HfHubHTTPError
 import numpy as np
 from faster_whisper import WhisperModel
+from datetime import datetime
 
 CHUNK_LENGTH_MS = 5 * 60 * 1000  # 5 minutes
 
@@ -109,9 +110,18 @@ def merge_transcription_and_diarization(transcriptions: list, diarization: dict)
     
     return "\n".join(merged_output)
 
+def print_timestamp(step_name: str, start_time: datetime):
+    current_time = datetime.now()
+    elapsed_time = current_time - start_time
+    print(f"\n{step_name}開始時刻: {current_time}")
+    print(f"{step_name}までの経過時間: {elapsed_time}")
+
 def main(input_file: str, output_file: str, auth_token: str, model_size: str):
+    start_time = datetime.now()
+    print(f"開始時刻: {start_time}")
+
     # Login to Hugging Face
-    print(f"Using auth token: {auth_token}")  # トークンの確認
+    print(f"Using auth token: {auth_token}")
     login(token=auth_token)
 
     if not os.path.exists(input_file):
@@ -121,6 +131,7 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
     progress_file = f"{output_file}.progress"
     diarization_file = f"{output_file}.diarization"
 
+    print_timestamp("WAV変換", start_time)
     print(f"Converting {input_file} to WAV...")
     try:
         wav_file = convert_to_wav(input_file)
@@ -134,9 +145,11 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device.type}")
 
+    print_timestamp("文字起こし", start_time)
     print("Transcribing audio...")
     transcriptions = transcribe_audio(wav_file, progress_file, device, model_size)
 
+    print_timestamp("話者識別", start_time)
     if not os.path.exists(diarization_file):
         print("Performing speaker diarization...")
         try:
@@ -152,9 +165,11 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
         with open(diarization_file, 'rb') as f:
             diarization = torch.load(f)
 
+    print_timestamp("結果の統合", start_time)
     print("Merging transcription and diarization results...")
     final_output = merge_transcription_and_diarization(transcriptions, diarization)
 
+    print_timestamp("結果の出力", start_time)
     print(f"Writing output to {output_file}...")
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(final_output)
@@ -164,6 +179,10 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
     os.remove(progress_file)
     os.remove(diarization_file)
 
+    end_time = datetime.now()
+    total_elapsed_time = end_time - start_time
+    print(f"\n終了時刻: {end_time}")
+    print(f"総経過時間: {total_elapsed_time}")
     print("All steps completed successfully.")
 
 if __name__ == "__main__":
