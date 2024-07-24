@@ -18,7 +18,7 @@ Follow these steps to install AudioTranscribePro:
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/AudioTranscribePro
+   git clone https://github.com/daishir0/AudioTranscribePro
    ```
 2. Navigate to the project directory:
    ```
@@ -87,7 +87,7 @@ AudioTranscribeProをインストールするには、以下の手順に従っ�
 
 1. リポジトリをクローンします：
    ```
-   git clone https://github.com/yourusername/AudioTranscribePro
+   git clone https://github.com/daishir0/AudioTranscribePro
    ```
 2. プロジェクトディレクトリに移動します：
    ```
