@@ -1,0 +1,5 @@
+openai:
+  api_key: "OPENAI_API_KEY"
+    
+huggingface:
+  use_auth_token: "HUGGINGFACE_AUTH_TOKEN"
