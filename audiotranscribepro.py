@@ -14,6 +14,11 @@ from huggingface_hub.utils import HfHubHTTPError
 import numpy as np
 from faster_whisper import WhisperModel
 from datetime import datetime
+import yaml
+
+# Load config
+with open("config.yaml", "r") as f:
+    config = yaml.safe_load(f)
 
 CHUNK_LENGTH_MS = 5 * 60 * 1000  # 5 minutes
 
@@ -116,11 +121,12 @@ def print_timestamp(step_name: str, start_time: datetime):
     print(f"\n{step_name}開始時刻: {current_time}")
     print(f"{step_name}までの経過時間: {elapsed_time}")
 
-def main(input_file: str, output_file: str, auth_token: str, model_size: str):
+def main(input_file: str, output_file: str, model_size: str):
     start_time = datetime.now()
     print(f"開始時刻: {start_time}")
 
     # Login to Hugging Face
+    auth_token = config['huggingface']['use_auth_token']
     print(f"Using auth token: {auth_token}")
     login(token=auth_token)
 
@@ -141,6 +147,7 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
     except subprocess.CalledProcessError as e:
         print(f"Error during conversion: {str(e)}")
         sys.exit(1)
+    print_timestamp("WAV変換完了", start_time)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device.type}")
@@ -148,6 +155,7 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
     print_timestamp("文字起こし", start_time)
     print("Transcribing audio...")
     transcriptions = transcribe_audio(wav_file, progress_file, device, model_size)
+    print_timestamp("文字起こし完了", start_time)
 
     print_timestamp("話者識別", start_time)
     if not os.path.exists(diarization_file):
@@ -164,15 +172,18 @@ def main(input_file: str, output_file: str, auth_token: str, model_size: str):
         print("Loading existing diarization results...")
         with open(diarization_file, 'rb') as f:
             diarization = torch.load(f)
+    print_timestamp("話者識別完了", start_time)
 
     print_timestamp("結果の統合", start_time)
     print("Merging transcription and diarization results...")
     final_output = merge_transcription_and_diarization(transcriptions, diarization)
+    print_timestamp("結果の統合完了", start_time)
 
     print_timestamp("結果の出力", start_time)
     print(f"Writing output to {output_file}...")
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(final_output)
+    print_timestamp("結果の出力完了", start_time)
 
     print("Transcription complete. Cleaning up...")
     os.remove(wav_file)
@@ -189,8 +200,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Transcribe audio with speaker diarization.")
     parser.add_argument("input_file", help="Path to the input audio file (MP3, M4A, or MP4)")
     parser.add_argument("output_file", help="Path to the output text file")
-    parser.add_argument("--auth_token", required=True, help="Hugging Face authentication token")
     parser.add_argument("--model_size", default="large-v3", help="Size of the Whisper model to use (e.g. tiny, base, large, large-v3)")
     args = parser.parse_args()
 
-    main(args.input_file, args.output_file, args.auth_token, args.model_size)
+    main(args.input_file, args.output_file, args.model_size)
