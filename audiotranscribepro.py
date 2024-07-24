@@ -52,24 +52,33 @@ def transcribe_audio(audio_file: str, progress_file: str, device, model_size: st
     
     transcriptions = []
     start_chunk = 0
+    absolute_start_time = 0  # 追加: 絶対開始時間の追跡
     
     if os.path.exists(progress_file):
         with open(progress_file, 'r') as f:
             progress = json.load(f)
             transcriptions = progress['transcriptions']
             start_chunk = progress['last_chunk'] + 1
+            absolute_start_time = start_chunk * (CHUNK_LENGTH_MS / 1000)  # 追加: 絶対開始時間の復元
     
     for i, chunk in enumerate(chunks[start_chunk:], start=start_chunk):
         print(f"Transcribing chunk {i+1}/{len(chunks)}...")  # 進捗状況を出力
         segments = transcribe_audio_chunk(chunk, model)
-        transcriptions.append({"segments": [{"start": seg.start, "end": seg.end, "text": seg.text} for seg in segments]})
+        
+        # 修正: 絶対時間の計算を含める
+        chunk_transcription = {
+            "absolute_start": absolute_start_time,
+            "segments": [{"start": seg.start + absolute_start_time, 
+                          "end": seg.end + absolute_start_time, 
+                          "text": seg.text} for seg in segments]
+        }
+        transcriptions.append(chunk_transcription)
         
         # Save progress
         with open(progress_file, 'w') as f:
             json.dump({'transcriptions': transcriptions, 'last_chunk': i}, f)
         
-        # Add a sleep to reduce CPU usage
-        # time.sleep(0.5)  # Adjust this value to control CPU usage
+        absolute_start_time += CHUNK_LENGTH_MS / 1000  # 次のチャンクの絶対開始時間を更新
     
     return transcriptions
 
@@ -95,12 +104,11 @@ def perform_diarization(audio_file: str, auth_token: str) -> dict:
 
 def merge_transcription_and_diarization(transcriptions: list, diarization: dict) -> str:
     merged_output = []
-    total_offset = 0
     
     for transcription in transcriptions:
         for segment in transcription["segments"]:
-            segment_start = segment["start"] + total_offset
-            segment_end = segment["end"] + total_offset
+            segment_start = segment["start"]  # すでに絶対時間
+            segment_end = segment["end"]  # すでに絶対時間
             
             speaker = None
             for turn, _, spk in diarization.itertracks(yield_label=True):
@@ -109,9 +117,7 @@ def merge_transcription_and_diarization(transcriptions: list, diarization: dict)
                     break
             
             text = segment["text"]
-            merged_output.append(f"{speaker}: {text}")
-        
-        total_offset += transcription["segments"][-1]["end"]
+            merged_output.append(f"{speaker} [{segment_start:.2f}-{segment_end:.2f}]: {text}")
     
     return "\n".join(merged_output)
 
@@ -183,12 +189,26 @@ def main(input_file: str, output_file: str, model_size: str):
     print(f"Writing output to {output_file}...")
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(final_output)
+    
+    # JSONファイルとして絶対時間を含む結果を保存
+    json_output = []
+    for transcription in transcriptions:
+        for segment in transcription["segments"]:
+            json_output.append({
+                "start": segment["start"],
+                "end": segment["end"],
+                "text": segment["text"]
+            })
+    
+    with open(f"{output_file}.json", 'w', encoding='utf-8') as f:
+        json.dump(json_output, f, ensure_ascii=False, indent=2)
+    
     print_timestamp("結果の出力完了", start_time)
 
     print("Transcription complete. Cleaning up...")
-    os.remove(wav_file)
-    os.remove(progress_file)
-    os.remove(diarization_file)
+    # os.remove(wav_file)
+    # os.remove(progress_file)
+    # os.remove(diarization_file)
 
     end_time = datetime.now()
     total_elapsed_time = end_time - start_time
